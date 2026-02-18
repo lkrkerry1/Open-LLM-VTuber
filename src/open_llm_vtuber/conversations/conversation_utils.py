@@ -9,7 +9,13 @@ from ..message_handler import message_handler
 from .types import WebSocketSend, BroadcastContext
 from .tts_manager import TTSTaskManager
 from ..agent.output_types import SentenceOutput, AudioOutput
-from ..agent.input_types import BatchInput, TextData, ImageData, TextSource, ImageSource
+from ..agent.input_types import (
+    BatchInput,
+    TextData,
+    ImageData,
+    TextSource,
+    ImageSource,
+)
 from ..asr.asr_interface import ASRInterface
 from ..live2d_model import Live2dModel
 from ..tts.tts_interface import TTSInterface
@@ -26,18 +32,24 @@ def create_batch_input(
     """Create batch input for agent processing"""
     return BatchInput(
         texts=[
-            TextData(source=TextSource.INPUT, content=input_text, from_name=from_name)
-        ],
-        images=[
-            ImageData(
-                source=ImageSource(img["source"]),
-                data=img["data"],
-                mime_type=img["mime_type"],
+            TextData(
+                source=TextSource.INPUT,
+                content=input_text,
+                from_name=from_name,
             )
-            for img in (images or [])
-        ]
-        if images
-        else None,
+        ],
+        images=(
+            [
+                ImageData(
+                    source=ImageSource(img["source"]),
+                    data=img["data"],
+                    mime_type=img["mime_type"],
+                )
+                for img in (images or [])
+            ]
+            if images
+            else None
+        ),
         metadata=metadata,
     )
 
@@ -52,7 +64,9 @@ async def process_agent_output(
     translate_engine: Optional[Any] = None,
 ) -> str:
     """Process agent output with character information and optional translation"""
-    output.display_text.name = character_config.character_name
+    output.display_text.name = (
+        character_config.character_name
+    )
     output.display_text.avatar = character_config.avatar
 
     full_response = ""
@@ -67,14 +81,21 @@ async def process_agent_output(
                 translate_engine,
             )
         elif isinstance(output, AudioOutput):
-            full_response = await handle_audio_output(output, websocket_send)
+            full_response = await handle_audio_output(
+                output, websocket_send
+            )
         else:
-            logger.warning(f"Unknown output type: {type(output)}")
+            logger.warning(
+                f"Unknown output type: {type(output)}"
+            )
     except Exception as e:
         logger.error(f"Error processing agent output: {e}")
         await websocket_send(
             json.dumps(
-                {"type": "error", "message": f"Error processing response: {str(e)}"}
+                {
+                    "type": "error",
+                    "message": f"Error processing response: {str(e)}",
+                }
             )
         )
 
@@ -92,14 +113,28 @@ async def handle_sentence_output(
     """Handle sentence output type with optional translation support"""
     full_response = ""
     async for display_text, tts_text, actions in output:
-        logger.debug(f"🏃 Processing output: '''{tts_text}'''...")
+        logger.debug(
+            f"🏃 Processing output: '''{tts_text}'''..."
+        )
 
         if translate_engine:
-            if len(re.sub(r'[\s.,!?，。！？\'"』」）】\s]+', "", tts_text)):
-                tts_text = translate_engine.translate(tts_text)
-            logger.info(f"🏃 Text after translation: '''{tts_text}'''...")
+            if len(
+                re.sub(
+                    r'[\s.,!?，。！？\'"』」）】\s]+',
+                    "",
+                    tts_text,
+                )
+            ):
+                tts_text = translate_engine.translate(
+                    tts_text
+                )
+            logger.info(
+                f"🏃 Text after translation: '''{tts_text}'''..."
+            )
         else:
-            logger.debug("🚫 No translation engine available. Skipping translation.")
+            logger.debug(
+                "🚫 No translation engine available. Skipping translation."
+            )
 
         full_response += display_text.text
         await tts_manager.speak(
@@ -119,7 +154,12 @@ async def handle_audio_output(
 ) -> str:
     """Process and send AudioOutput directly to the client"""
     full_response = ""
-    async for audio_path, display_text, transcript, actions in output:
+    async for (
+        audio_path,
+        display_text,
+        transcript,
+        actions,
+    ) in output:
         full_response += transcript
         audio_payload = prepare_audio_payload(
             audio_path=audio_path,
@@ -130,7 +170,9 @@ async def handle_audio_output(
     return full_response
 
 
-async def send_conversation_start_signals(websocket_send: WebSocketSend) -> None:
+async def send_conversation_start_signals(
+    websocket_send: WebSocketSend,
+) -> None:
     """Send initial conversation signals"""
     await websocket_send(
         json.dumps(
@@ -140,7 +182,11 @@ async def send_conversation_start_signals(websocket_send: WebSocketSend) -> None
             }
         )
     )
-    await websocket_send(json.dumps({"type": "full-text", "text": "Thinking..."}))
+    await websocket_send(
+        json.dumps(
+            {"type": "full-text", "text": "Thinking..."}
+        )
+    )
 
 
 async def process_user_input(
@@ -151,9 +197,16 @@ async def process_user_input(
     """Process user input, converting audio to text if needed"""
     if isinstance(user_input, np.ndarray):
         logger.info("Transcribing audio input...")
-        input_text = await asr_engine.async_transcribe_np(user_input)
+        input_text = await asr_engine.async_transcribe_np(
+            user_input
+        )
         await websocket_send(
-            json.dumps({"type": "user-input-transcription", "text": input_text})
+            json.dumps(
+                {
+                    "type": "user-input-transcription",
+                    "text": input_text,
+                }
+            )
         )
         return input_text
     return user_input
@@ -168,17 +221,23 @@ async def finalize_conversation_turn(
     """Finalize a conversation turn"""
     if tts_manager.task_list:
         await asyncio.gather(*tts_manager.task_list)
-        await websocket_send(json.dumps({"type": "backend-synth-complete"}))
+        await websocket_send(
+            json.dumps({"type": "backend-synth-complete"})
+        )
 
         response = await message_handler.wait_for_response(
             client_uid, "frontend-playback-complete"
         )
 
         if not response:
-            logger.warning(f"No playback completion response from {client_uid}")
+            logger.warning(
+                f"No playback completion response from {client_uid}"
+            )
             return
 
-    await websocket_send(json.dumps({"type": "force-new-message"}))
+    await websocket_send(
+        json.dumps({"type": "force-new-message"})
+    )
 
     if broadcast_ctx and broadcast_ctx.broadcast_func:
         await broadcast_ctx.broadcast_func(
@@ -187,7 +246,9 @@ async def finalize_conversation_turn(
             broadcast_ctx.current_client_uid,
         )
 
-    await send_conversation_end_signal(websocket_send, broadcast_ctx)
+    await send_conversation_end_signal(
+        websocket_send, broadcast_ctx
+    )
 
 
 async def send_conversation_end_signal(
@@ -203,19 +264,29 @@ async def send_conversation_end_signal(
 
     await websocket_send(json.dumps(chain_end_msg))
 
-    if broadcast_ctx and broadcast_ctx.broadcast_func and broadcast_ctx.group_members:
+    if (
+        broadcast_ctx
+        and broadcast_ctx.broadcast_func
+        and broadcast_ctx.group_members
+    ):
         await broadcast_ctx.broadcast_func(
             broadcast_ctx.group_members,
             chain_end_msg,
         )
 
-    logger.info(f"😎👍✅ Conversation Chain {session_emoji} completed!")
+    logger.info(
+        f"😎👍✅ Conversation Chain {session_emoji} completed!"
+    )
 
 
-def cleanup_conversation(tts_manager: TTSTaskManager, session_emoji: str) -> None:
+def cleanup_conversation(
+    tts_manager: TTSTaskManager, session_emoji: str
+) -> None:
     """Clean up conversation resources"""
     tts_manager.clear()
-    logger.debug(f"🧹 Clearing up conversation {session_emoji}.")
+    logger.debug(
+        f"🧹 Clearing up conversation {session_emoji}."
+    )
 
 
 EMOJI_LIST = [

@@ -51,8 +51,12 @@ async def process_single_conversation(
 
     try:
         # Send initial signals
-        await send_conversation_start_signals(websocket_send)
-        logger.info(f"New Conversation Chain {session_emoji} started!")
+        await send_conversation_start_signals(
+            websocket_send
+        )
+        logger.info(
+            f"New Conversation Chain {session_emoji} started!"
+        )
 
         # Process user input
         input_text = await process_user_input(
@@ -68,7 +72,9 @@ async def process_single_conversation(
         )
 
         # Store user message (check if we should skip storing to history)
-        skip_history = metadata and metadata.get("skip_history", False)
+        skip_history = metadata and metadata.get(
+            "skip_history", False
+        )
         if context.history_uid and not skip_history:
             store_message(
                 conf_uid=context.character_config.conf_uid,
@@ -79,7 +85,9 @@ async def process_single_conversation(
             )
 
         if skip_history:
-            logger.debug("Skipping storing user input to history (proactive speak)")
+            logger.debug(
+                "Skipping storing user input to history (proactive speak)"
+            )
 
         logger.info(f"User input: {input_text}")
         if images:
@@ -87,20 +95,32 @@ async def process_single_conversation(
 
         try:
             # agent.chat yields Union[SentenceOutput, Dict[str, Any]]
-            agent_output_stream = context.agent_engine.chat(batch_input)
+            agent_output_stream = context.agent_engine.chat(
+                batch_input
+            )
 
             async for output_item in agent_output_stream:
                 if (
                     isinstance(output_item, dict)
-                    and output_item.get("type") == "tool_call_status"
+                    and output_item.get("type")
+                    == "tool_call_status"
                 ):
                     # Handle tool status event: send WebSocket message
-                    output_item["name"] = context.character_config.character_name
-                    logger.debug(f"Sending tool status update: {output_item}")
+                    output_item["name"] = (
+                        context.character_config.character_name
+                    )
+                    logger.debug(
+                        f"Sending tool status update: {output_item}"
+                    )
 
-                    await websocket_send(json.dumps(output_item))
+                    await websocket_send(
+                        json.dumps(output_item)
+                    )
 
-                elif isinstance(output_item, (SentenceOutput, AudioOutput)):
+                elif isinstance(
+                    output_item,
+                    (SentenceOutput, AudioOutput),
+                ):
                     # Handle SentenceOutput or AudioOutput
                     response_part = await process_agent_output(
                         output=output_item,
@@ -113,14 +133,18 @@ async def process_single_conversation(
                     )
                     # Ensure response_part is treated as a string before concatenation
                     response_part_str = (
-                        str(response_part) if response_part is not None else ""
+                        str(response_part)
+                        if response_part is not None
+                        else ""
                     )
                     full_response += response_part_str  # Accumulate text response
                 else:
                     logger.warning(
                         f"Received unexpected item type from agent chat stream: {type(output_item)}"
                     )
-                    logger.debug(f"Unexpected item content: {output_item}")
+                    logger.debug(
+                        f"Unexpected item content: {output_item}"
+                    )
 
         except Exception as e:
             logger.exception(
@@ -140,7 +164,11 @@ async def process_single_conversation(
         # Wait for any pending TTS tasks
         if tts_manager.task_list:
             await asyncio.gather(*tts_manager.task_list)
-            await websocket_send(json.dumps({"type": "backend-synth-complete"}))
+            await websocket_send(
+                json.dumps(
+                    {"type": "backend-synth-complete"}
+                )
+            )
 
         await finalize_conversation_turn(
             tts_manager=tts_manager,
@@ -148,7 +176,9 @@ async def process_single_conversation(
             client_uid=client_uid,
         )
 
-        if context.history_uid and full_response:  # Check full_response before storing
+        if (
+            context.history_uid and full_response
+        ):  # Check full_response before storing
             store_message(
                 conf_uid=context.character_config.conf_uid,
                 history_uid=context.history_uid,
@@ -162,12 +192,19 @@ async def process_single_conversation(
         return full_response  # Return accumulated full_response
 
     except asyncio.CancelledError:
-        logger.info(f"🤡👍 Conversation {session_emoji} cancelled because interrupted.")
+        logger.info(
+            f"🤡👍 Conversation {session_emoji} cancelled because interrupted."
+        )
         raise
     except Exception as e:
         logger.error(f"Error in conversation chain: {e}")
         await websocket_send(
-            json.dumps({"type": "error", "message": f"Conversation error: {str(e)}"})
+            json.dumps(
+                {
+                    "type": "error",
+                    "message": f"Conversation error: {str(e)}",
+                }
+            )
         )
         raise
     finally:
