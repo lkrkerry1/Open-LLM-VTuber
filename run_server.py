@@ -11,10 +11,18 @@ from loguru import logger
 from upgrade_codes.upgrade_manager import UpgradeManager
 
 from src.open_llm_vtuber.server import WebSocketServer
-from src.open_llm_vtuber.config_manager import Config, read_yaml, validate_config
+from src.open_llm_vtuber.config_manager import (
+    Config,
+    read_yaml,
+    validate_config,
+)
 
-os.environ["HF_HOME"] = str(Path(__file__).parent / "models")
-os.environ["MODELSCOPE_CACHE"] = str(Path(__file__).parent / "models")
+os.environ["HF_HOME"] = str(
+    Path(__file__).parent / "models"
+)
+os.environ["MODELSCOPE_CACHE"] = str(
+    Path(__file__).parent / "models"
+)
 
 upgrade_manager = UpgradeManager()
 
@@ -25,28 +33,6 @@ def get_version() -> str:
     return pyproject["project"]["version"]
 
 
-def init_logger(console_log_level: str = "INFO") -> None:
-    logger.remove()
-    # Console output
-    logger.add(
-        sys.stderr,
-        level=console_log_level,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | {message}",
-        colorize=True,
-    )
-
-    # File output
-    logger.add(
-        "logs/debug_{time:YYYY-MM-DD}.log",
-        rotation="10 MB",
-        retention="30 days",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message} | {extra}",
-        backtrace=True,
-        diagnose=True,
-    )
-
-
 def check_frontend_submodule(lang=None):
     """
     Check if the frontend submodule is initialized. If not, attempt to initialize it.
@@ -55,10 +41,14 @@ def check_frontend_submodule(lang=None):
     if lang is None:
         lang = upgrade_manager.lang
 
-    frontend_path = Path(__file__).parent / "frontend" / "index.html"
+    frontend_path = (
+        Path(__file__).parent / "frontend" / "index.html"
+    )
     if not frontend_path.exists():
         if lang == "zh":
-            logger.warning("未找到前端子模块，正在尝试初始化子模块...")
+            logger.warning(
+                "未找到前端子模块，正在尝试初始化子模块..."
+            )
         else:
             logger.warning(
                 "Frontend submodule not found, attempting to initialize submodules..."
@@ -66,11 +56,20 @@ def check_frontend_submodule(lang=None):
 
         try:
             subprocess.run(
-                ["git", "submodule", "update", "--init", "--recursive"], check=True
+                [
+                    "git",
+                    "submodule",
+                    "update",
+                    "--init",
+                    "--recursive",
+                ],
+                check=True,
             )
             if frontend_path.exists():
                 if lang == "zh":
-                    logger.info("👍 前端子模块（和其他子模块）初始化成功。")
+                    logger.info(
+                        "👍 前端子模块（和其他子模块）初始化成功。"
+                    )
                 else:
                     logger.info(
                         "👍 Frontend submodule (and other submodules) initialized successfully."
@@ -108,18 +107,27 @@ def check_frontend_submodule(lang=None):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Open-LLM-VTuber Server")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser = argparse.ArgumentParser(
+        description="Open-LLM-VTuber Server"
+    )
     parser.add_argument(
-        "--hf_mirror", action="store_true", help="Use Hugging Face mirror"
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+    parser.add_argument(
+        "--hf_mirror",
+        action="store_true",
+        help="Use Hugging Face mirror",
     )
     return parser.parse_args()
 
 
 @logger.catch
 def run(console_log_level: str):
-    init_logger(console_log_level)
-    logger.info(f"Open-LLM-VTuber, version v{get_version()}")
+    logger.info(
+        f"Open-LLM-VTuber, version v{get_version()}"
+    )
 
     # Get selected language
     lang = upgrade_manager.lang
@@ -131,7 +139,7 @@ def run(console_log_level: str):
     try:
         upgrade_manager.sync_user_config()
     except Exception as e:
-        logger.error(f"Error syncing user config: {e}")
+        logger.exception(f"Error syncing user config: {e}")
 
     atexit.register(WebSocketServer.clean_cache)
 
@@ -140,7 +148,9 @@ def run(console_log_level: str):
     server_config = config.system_config
 
     if server_config.enable_proxy:
-        logger.info("Proxy mode enabled - /proxy-ws endpoint will be available")
+        logger.info(
+            "Proxy mode enabled - /proxy-ws endpoint will be available"
+        )
 
     # Initialize the WebSocket server (synchronous part)
     server = WebSocketServer(config=config)
@@ -149,13 +159,19 @@ def run(console_log_level: str):
     logger.info("Initializing server context...")
     try:
         asyncio.run(server.initialize())
-        logger.info("Server context initialized successfully.")
+        logger.info(
+            "Server context initialized successfully."
+        )
     except Exception as e:
-        logger.error(f"Failed to initialize server context: {e}")
+        logger.exception(
+            f"Failed to initialize server context: {e}"
+        )
         sys.exit(1)  # Exit if initialization fails
 
     # Run the Uvicorn server
-    logger.info(f"Starting server on {server_config.host}:{server_config.port}")
+    logger.info(
+        f"Starting server on {server_config.host}:{server_config.port}"
+    )
     uvicorn.run(
         app=server.app,
         host=server_config.host,
