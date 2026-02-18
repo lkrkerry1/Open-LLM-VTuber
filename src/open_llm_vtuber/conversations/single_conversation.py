@@ -130,6 +130,7 @@ async def process_single_conversation(
                         websocket_send=websocket_send,  # Pass websocket_send for audio/tts messages
                         tts_manager=tts_manager,
                         translate_engine=context.translate_engine,
+                        default_avatar=context.character_config.avatar,
                     )
                     # Ensure response_part is treated as a string before concatenation
                     response_part_str = (
@@ -139,12 +140,59 @@ async def process_single_conversation(
                     )
                     full_response += response_part_str  # Accumulate text response
                 else:
-                    logger.warning(
-                        f"Received unexpected item type from agent chat stream: {type(output_item)}"
-                    )
-                    logger.debug(
-                        f"Unexpected item content: {output_item}"
-                    )
+                    # 属性检查作为回退（兼容类型不一致的情况）
+                    if hasattr(
+                        output_item, "display_text"
+                    ) and hasattr(output_item, "tts_text"):
+                        logger.debug(
+                            f"Processing object as SentenceOutput via attribute fallback: {type(output_item)}"
+                        )
+                        response_part = await process_agent_output(
+                            output=output_item,
+                            character_config=context.character_config,
+                            live2d_model=context.live2d_model,
+                            tts_engine=context.tts_engine,
+                            websocket_send=websocket_send,
+                            tts_manager=tts_manager,
+                            translate_engine=context.translate_engine,
+                            default_avatar=context.character_config.avatar,
+                        )
+                        response_part_str = (
+                            str(response_part)
+                            if response_part is not None
+                            else ""
+                        )
+                        full_response += response_part_str
+                    elif hasattr(
+                        output_item, "audio"
+                    ) and hasattr(output_item, "text"):
+                        # 可选的 AudioOutput 回退
+                        logger.debug(
+                            f"Processing object as AudioOutput via attribute fallback: {type(output_item)}"
+                        )
+                        response_part = await process_agent_output(
+                            output=output_item,
+                            character_config=context.character_config,
+                            live2d_model=context.live2d_model,
+                            tts_engine=context.tts_engine,
+                            websocket_send=websocket_send,
+                            tts_manager=tts_manager,
+                            translate_engine=context.translate_engine,
+                            default_avatar=context.character_config.avatar,
+                        )
+                        response_part_str = (
+                            str(response_part)
+                            if response_part is not None
+                            else ""
+                        )
+                        full_response += response_part_str
+                    else:
+                        logger.warning(
+                            f"Received unexpected item type from agent chat stream: {type(output_item)}"
+                        )
+                        logger.debug(
+                            f"Unexpected item content: {output_item}"
+                        )
 
         except Exception as e:
             logger.exception(
@@ -176,9 +224,7 @@ async def process_single_conversation(
             client_uid=client_uid,
         )
 
-        if (
-            context.history_uid and full_response
-        ):  # Check full_response before storing
+        if context.history_uid and full_response:
             store_message(
                 conf_uid=context.character_config.conf_uid,
                 history_uid=context.history_uid,
@@ -189,7 +235,24 @@ async def process_single_conversation(
             )
             logger.info(f"AI response: {full_response}")
 
-        return full_response  # Return accumulated full_response
+            # 发送 final full-text 确保气泡显示（已有）
+            await websocket_send(
+                json.dumps(
+                    {
+                        "type": "full-text",
+                        "text": full_response,
+                        "name": context.character_config.character_name,
+                        "avatar": context.character_config.avatar,
+                    }
+                )
+            )
+
+            # 注意：不再发送 user-input-transcription 来模拟 AI 回复，
+            # 因为前端已经通过 audio 消息中的 display_text 将 AI 回复添加到历史记录。
+            # 发送 user-input-transcription 会导致 AI 回复以用户样式显示（头像在右边），
+            # 因此已删除。
+
+        return full_response
 
     except asyncio.CancelledError:
         logger.info(

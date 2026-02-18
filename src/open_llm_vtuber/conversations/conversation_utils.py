@@ -62,15 +62,13 @@ async def process_agent_output(
     websocket_send: WebSocketSend,
     tts_manager: TTSTaskManager,
     translate_engine: Optional[Any] = None,
+    default_avatar: Optional[str] = None,
 ) -> str:
     """Process agent output with character information and optional translation"""
-    output.display_text.name = (
-        character_config.character_name
-    )
-    output.display_text.avatar = character_config.avatar
-
     full_response = ""
+
     try:
+        # 尝试通过 isinstance 判断
         if isinstance(output, SentenceOutput):
             full_response = await handle_sentence_output(
                 output,
@@ -79,15 +77,44 @@ async def process_agent_output(
                 websocket_send,
                 tts_manager,
                 translate_engine,
+                default_avatar,
             )
         elif isinstance(output, AudioOutput):
             full_response = await handle_audio_output(
                 output, websocket_send
             )
         else:
-            logger.warning(
-                f"Unknown output type: {type(output)}"
-            )
+            # 属性检查作为回退
+            if hasattr(output, "display_text") and hasattr(
+                output, "tts_text"
+            ):
+                logger.debug(
+                    f"Processing object as SentenceOutput via attribute fallback: {type(output)}"
+                )
+                full_response = (
+                    await handle_sentence_output(
+                        output,
+                        live2d_model,
+                        tts_engine,
+                        websocket_send,
+                        tts_manager,
+                        translate_engine,
+                        default_avatar,
+                    )
+                )
+            elif hasattr(output, "audio") and hasattr(
+                output, "text"
+            ):
+                logger.debug(
+                    f"Processing object as AudioOutput via attribute fallback: {type(output)}"
+                )
+                full_response = await handle_audio_output(
+                    output, websocket_send
+                )
+            else:
+                logger.warning(
+                    f"Unknown output type: {type(output)}"
+                )
     except Exception as e:
         logger.error(f"Error processing agent output: {e}")
         await websocket_send(
@@ -109,43 +136,63 @@ async def handle_sentence_output(
     websocket_send: WebSocketSend,
     tts_manager: TTSTaskManager,
     translate_engine: Optional[Any] = None,
+    default_avatar: Optional[str] = None,
 ) -> str:
     """Handle sentence output type with optional translation support"""
-    full_response = ""
-    async for display_text, tts_text, actions in output:
-        logger.debug(
-            f"🏃 Processing output: '''{tts_text}'''..."
-        )
+    display_text = output.display_text
+    tts_text = output.tts_text
+    actions = output.actions
 
-        if translate_engine:
-            if len(
-                re.sub(
-                    r'[\s.,!?，。！？\'"』」）】\s]+',
-                    "",
-                    tts_text,
-                )
-            ):
-                tts_text = translate_engine.translate(
-                    tts_text
-                )
+    logger.debug(
+        f"🏃 Processing output: '''{tts_text}'''..."
+    )
+
+    # 翻译处理（如果需要）
+    if translate_engine and tts_text:
+        stripped = re.sub(
+            r'[\s.,!?，。！？\'"』」）】\s]+', "", tts_text
+        )
+        if stripped:
+            tts_text = await translate_engine.translate(
+                tts_text
+            )
             logger.info(
                 f"🏃 Text after translation: '''{tts_text}'''..."
             )
-        else:
-            logger.debug(
-                "🚫 No translation engine available. Skipping translation."
-            )
-
-        full_response += display_text.text
-        await tts_manager.speak(
-            tts_text=tts_text,
-            display_text=display_text,
-            actions=actions,
-            live2d_model=live2d_model,
-            tts_engine=tts_engine,
-            websocket_send=websocket_send,
+    else:
+        logger.debug(
+            "🚫 No translation engine available. Skipping translation."
         )
-    return full_response
+
+    # 发送显示文本到前端（使用 sentence 类型）
+    if display_text and display_text.text:
+        await websocket_send(
+            json.dumps(
+                {
+                    "type": "sentence",
+                    "text": display_text.text,
+                    "name": display_text.name,
+                    "avatar": display_text.avatar
+                    or default_avatar,
+                }
+            )
+        )
+        logger.debug(
+            f"Sent display text: {display_text.text}"
+        )
+
+    # 调用 TTS 管理器进行语音合成和播放
+    await tts_manager.speak(
+        tts_text=tts_text,
+        display_text=display_text,
+        actions=actions,
+        live2d_model=live2d_model,
+        tts_engine=tts_engine,
+        websocket_send=websocket_send,
+    )
+
+    # 返回显示文本用于历史记录累积
+    return display_text.text if display_text else ""
 
 
 async def handle_audio_output(
