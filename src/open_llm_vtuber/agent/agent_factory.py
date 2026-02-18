@@ -1,5 +1,6 @@
 from typing import Type, Literal
 from loguru import logger
+import importlib  # 新增
 
 from .agents.agent_interface import AgentInterface
 from .agents.basic_memory_agent import BasicMemoryAgent
@@ -122,33 +123,11 @@ class AgentFactory:
             )
 
         elif conversation_agent_choice == "mem0_agent":
-            from .agents.mem0_llm import LLM as Mem0LLM
-
-            mem0_settings = agent_settings.get(
-                "mem0_agent", {}
+            logger.critical(
+                "mem0_agent is deprecated and no longer supported. Please switch to basic_memory_agent or a custom agent implementation."
             )
-            if not mem0_settings:
-                raise ValueError(
-                    "Mem0 agent settings not found"
-                )
-
-            # Validate required settings
-            required_fields = [
-                "base_url",
-                "model",
-                "mem0_config",
-            ]
-            for field in required_fields:
-                if field not in mem0_settings:
-                    raise ValueError(
-                        f"Missing required field '{field}' in mem0_agent settings"
-                    )
-
-            return Mem0LLM(
-                user_id=kwargs.get("user_id", "default"),
-                system=system_prompt,
-                live2d_model=live2d_model,
-                **mem0_settings,
+            raise NotImplementedError(
+                "mem0_agent is deprecated and no longer supported."
             )
 
         elif conversation_agent_choice == "hume_ai_agent":
@@ -180,7 +159,128 @@ class AgentFactory:
                 port=settings.get("port"),
             )
 
+        # 在 else 分支中
         else:
-            raise ValueError(
-                f"Unsupported agent type: {conversation_agent_choice}"
+            # ========== 动态导入自定义 Agent ==========
+            try:
+                module_path, class_name = (
+                    conversation_agent_choice.rsplit(".", 1)
+                )
+                module = importlib.import_module(
+                    module_path
+                )
+                agent_class = getattr(module, class_name)
+                logger.info(
+                    f"Dynamically loading custom agent: {agent_class} from {module_path}"
+                )
+            except (
+                ImportError,
+                AttributeError,
+                ValueError,
+            ) as e:
+                logger.error(
+                    f"Failed to load custom agent '{conversation_agent_choice}': {e}"
+                )
+                raise ValueError(
+                    f"Unsupported agent type or failed to load custom agent: {conversation_agent_choice}"
+                )
+
+            # 🔧 将 agent_settings 转为字典（兼容 Pydantic 模型）
+            if hasattr(agent_settings, "model_dump"):
+                agent_settings_dict = (
+                    agent_settings.model_dump()
+                )
+            else:
+                agent_settings_dict = agent_settings
+
+            custom_settings = agent_settings_dict.get(
+                conversation_agent_choice, {}
             )
+            logger.debug(
+                f"Custom settings for {conversation_agent_choice}: {custom_settings}"
+            )
+
+            # 强制要求 llm_provider
+            llm_provider = custom_settings.get(
+                "llm_provider"
+            )
+            if not llm_provider:
+                raise ValueError(
+                    f"Custom agent '{conversation_agent_choice}' requires 'llm_provider' in its settings."
+                )
+
+            # 🔧 将 llm_configs 转为字典
+            if hasattr(llm_configs, "model_dump"):
+                llm_configs_dict = llm_configs.model_dump()
+            else:
+                llm_configs_dict = llm_configs
+
+            llm_config = llm_configs_dict.get(llm_provider)
+            if llm_config is None:
+                raise ValueError(
+                    f"Configuration not found for LLM provider: {llm_provider}"
+                )
+
+            # 弹出 interrupt_method（如果存在）
+            interrupt_method = llm_config.pop(
+                "interrupt_method", "user"
+            )
+
+            # 创建 LLM 实例
+            llm = StatelessLLMFactory.create_llm(
+                llm_provider=llm_provider,
+                system_prompt=system_prompt,
+                **llm_config,
+            )
+
+            # 构建基础参数
+            base_args = {
+                "llm": llm,
+                "system": system_prompt,
+                "live2d_model": live2d_model,
+                "tts_preprocessor_config": tts_preprocessor_config,
+                "tool_prompts": kwargs.get(
+                    "system_config", {}
+                ).get("tool_prompts", {}),
+                "tool_manager": kwargs.get("tool_manager"),
+                "tool_executor": kwargs.get(
+                    "tool_executor"
+                ),
+                "mcp_prompt_string": kwargs.get(
+                    "mcp_prompt_string", ""
+                ),
+                "interrupt_method": interrupt_method,
+            }
+
+            # 添加 BasicMemoryAgent 风格的额外参数
+            for key in [
+                "faster_first_response",
+                "segment_method",
+                "use_mcpp",
+            ]:
+                if key in custom_settings:
+                    base_args[key] = custom_settings[key]
+
+            # 剩余的自定义设置作为额外关键字参数
+            reserved_keys = set(base_args.keys()) | {
+                "llm_provider"
+            }
+            extra_kwargs = {
+                k: v
+                for k, v in custom_settings.items()
+                if k not in reserved_keys
+            }
+
+            try:
+                agent = agent_class(
+                    **base_args, **extra_kwargs
+                )
+                logger.info(
+                    f"Successfully instantiated custom agent: {conversation_agent_choice}"
+                )
+                return agent
+            except Exception as e:
+                logger.error(
+                    f"Failed to instantiate custom agent '{conversation_agent_choice}': {e}"
+                )
+                raise

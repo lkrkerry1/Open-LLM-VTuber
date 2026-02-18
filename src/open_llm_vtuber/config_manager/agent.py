@@ -3,7 +3,12 @@ This module contains the pydantic model for the configurations of
 different types of agents.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    ConfigDict,
+)
 from typing import Dict, ClassVar, Optional, Literal, List
 from .i18n import I18nMixin, Description
 from .stateless_llm import StatelessLLMConfigs
@@ -211,7 +216,8 @@ class LettaConfig(I18nMixin, BaseModel):
 
 
 class AgentSettings(I18nMixin, BaseModel):
-    """Settings for different types of agents."""
+    # 允许额外字段（自定义 Agent 的配置）
+    model_config = ConfigDict(extra="allow")
 
     basic_memory_agent: Optional[BasicMemoryAgentConfig] = (
         Field(None, alias="basic_memory_agent")
@@ -249,18 +255,35 @@ class AgentSettings(I18nMixin, BaseModel):
 class AgentConfig(I18nMixin, BaseModel):
     """This class contains all of the configurations related to agent."""
 
-    conversation_agent_choice: Literal[
-        "basic_memory_agent",
-        "mem0_agent",
-        "hume_ai_agent",
-        "letta_agent",
-    ] = Field(..., alias="conversation_agent_choice")
+    conversation_agent_choice: str = Field(
+        ..., alias="conversation_agent_choice"
+    )
     agent_settings: AgentSettings = Field(
         ..., alias="agent_settings"
     )
     llm_configs: StatelessLLMConfigs = Field(
         ..., alias="llm_configs"
     )
+
+    # 添加验证器：检查值是否合法
+    @field_validator("conversation_agent_choice")
+    def validate_agent_choice(cls, v: str) -> str:
+        allowed_builtin = [
+            "basic_memory_agent",
+            "mem0_agent",
+            "hume_ai_agent",
+            "letta_agent",
+        ]
+        # 如果是内置选项，直接通过
+        if v in allowed_builtin:
+            return v
+        # 否则，验证是否为有效的模块路径格式（至少包含一个点，且格式合理）
+        if "." not in v:
+            raise ValueError(
+                f"Invalid agent choice: '{v}'. Must be a built-in agent or a dotted module path like 'custom_agents.powermem_agent.PowerMemAgent'."
+            )
+        # 可以进一步验证模块路径的合法性（例如检查是否包含非法字符），但通常交给导入时处理
+        return v
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "conversation_agent_choice": Description(
