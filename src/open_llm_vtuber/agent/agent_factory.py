@@ -3,7 +3,9 @@ from loguru import logger
 
 from .agents.agent_interface import AgentInterface
 from .agents.basic_memory_agent import BasicMemoryAgent
-from .stateless_llm_factory import LLMFactory as StatelessLLMFactory
+from .stateless_llm_factory import (
+    LLMFactory as StatelessLLMFactory,
+)
 from .agents.hume_ai import HumeAIAgent
 from .agents.letta_agent import LettaAgent
 
@@ -34,38 +36,68 @@ class AgentFactory:
             tts_preprocessor_config: Configuration for TTS preprocessing
             **kwargs: Additional arguments
         """
-        logger.info(f"Initializing agent: {conversation_agent_choice}")
+        logger.info(
+            f"Initializing agent: {conversation_agent_choice}"
+        )
 
-        if conversation_agent_choice == "basic_memory_agent":
+        if (
+            conversation_agent_choice
+            == "basic_memory_agent"
+        ):
             # Get the LLM provider choice from agent settings
-            basic_memory_settings: dict = agent_settings.get("basic_memory_agent", {})
-            llm_provider: str = basic_memory_settings.get("llm_provider")
+            basic_memory_settings: dict = (
+                agent_settings.get("basic_memory_agent", {})
+            )
+            llm_provider: str = basic_memory_settings.get(
+                "llm_provider"
+            )
 
             if not llm_provider:
-                raise ValueError("LLM provider not specified for basic memory agent")
+                raise ValueError(
+                    "LLM provider not specified for basic memory agent"
+                )
 
             # Get the LLM config for this provider
             llm_config: dict = llm_configs.get(llm_provider)
-            interrupt_method: Literal["system", "user"] = llm_config.pop(
-                "interrupt_method", "user"
-            )
-
-            if not llm_config:
+            # 🔧 修复：先检查 llm_config 是否为 None
+            if llm_config is None:
                 raise ValueError(
                     f"Configuration not found for LLM provider: {llm_provider}"
                 )
 
-            # Create the stateless LLM
-            llm = StatelessLLMFactory.create_llm(
-                llm_provider=llm_provider, system_prompt=system_prompt, **llm_config
+            interrupt_method: Literal["system", "user"] = (
+                llm_config.pop("interrupt_method", "user")
             )
 
-            tool_prompts = kwargs.get("system_config", {}).get("tool_prompts", {})
+            # 原来的 if not llm_config: 检查可以保留，但此时 llm_config 已经不为 None
+            # 可选：如果 llm_config 在 pop 后变为空，是否需要处理？通常不需要，因为后面还会传给 create_llm
+            # 但保留原有逻辑也无妨
+            if not llm_config:
+                logger.warning(
+                    f"LLM config for {llm_provider} is empty after pop"
+                )
+
+            # Create the stateless LLM
+            llm = StatelessLLMFactory.create_llm(
+                llm_provider=llm_provider,
+                system_prompt=system_prompt,
+                **llm_config,
+            )
+
+            tool_prompts = kwargs.get(
+                "system_config", {}
+            ).get("tool_prompts", {})
 
             # Extract MCP components/data needed by BasicMemoryAgent from kwargs
-            tool_manager: Optional[ToolManager] = kwargs.get("tool_manager")
-            tool_executor: Optional[ToolExecutor] = kwargs.get("tool_executor")
-            mcp_prompt_string: str = kwargs.get("mcp_prompt_string", "")
+            tool_manager: Optional[ToolManager] = (
+                kwargs.get("tool_manager")
+            )
+            tool_executor: Optional[ToolExecutor] = (
+                kwargs.get("tool_executor")
+            )
+            mcp_prompt_string: str = kwargs.get(
+                "mcp_prompt_string", ""
+            )
 
             # Create the agent with the LLM and live2d_model
             return BasicMemoryAgent(
@@ -76,8 +108,12 @@ class AgentFactory:
                 faster_first_response=basic_memory_settings.get(
                     "faster_first_response", True
                 ),
-                segment_method=basic_memory_settings.get("segment_method", "pysbd"),
-                use_mcpp=basic_memory_settings.get("use_mcpp", False),
+                segment_method=basic_memory_settings.get(
+                    "segment_method", "pysbd"
+                ),
+                use_mcpp=basic_memory_settings.get(
+                    "use_mcpp", False
+                ),
                 interrupt_method=interrupt_method,
                 tool_prompts=tool_prompts,
                 tool_manager=tool_manager,
@@ -88,12 +124,20 @@ class AgentFactory:
         elif conversation_agent_choice == "mem0_agent":
             from .agents.mem0_llm import LLM as Mem0LLM
 
-            mem0_settings = agent_settings.get("mem0_agent", {})
+            mem0_settings = agent_settings.get(
+                "mem0_agent", {}
+            )
             if not mem0_settings:
-                raise ValueError("Mem0 agent settings not found")
+                raise ValueError(
+                    "Mem0 agent settings not found"
+                )
 
             # Validate required settings
-            required_fields = ["base_url", "model", "mem0_config"]
+            required_fields = [
+                "base_url",
+                "model",
+                "mem0_config",
+            ]
             for field in required_fields:
                 if field not in mem0_settings:
                     raise ValueError(
@@ -108,12 +152,16 @@ class AgentFactory:
             )
 
         elif conversation_agent_choice == "hume_ai_agent":
-            settings = agent_settings.get("hume_ai_agent", {})
+            settings = agent_settings.get(
+                "hume_ai_agent", {}
+            )
             return HumeAIAgent(
                 api_key=settings.get("api_key"),
                 host=settings.get("host", "api.hume.ai"),
                 config_id=settings.get("config_id"),
-                idle_timeout=settings.get("idle_timeout", 15),
+                idle_timeout=settings.get(
+                    "idle_timeout", 15
+                ),
             )
 
         elif conversation_agent_choice == "letta_agent":
@@ -122,11 +170,17 @@ class AgentFactory:
                 live2d_model=live2d_model,
                 id=settings.get("id"),
                 tts_preprocessor_config=tts_preprocessor_config,
-                faster_first_response=settings.get("faster_first_response"),
-                segment_method=settings.get("segment_method"),
+                faster_first_response=settings.get(
+                    "faster_first_response"
+                ),
+                segment_method=settings.get(
+                    "segment_method"
+                ),
                 host=settings.get("host"),
                 port=settings.get("port"),
             )
 
         else:
-            raise ValueError(f"Unsupported agent type: {conversation_agent_choice}")
+            raise ValueError(
+                f"Unsupported agent type: {conversation_agent_choice}"
+            )

@@ -27,12 +27,21 @@ class BasicMemoryAgentConfig(I18nMixin, BaseModel):
         "deepseek_llm",
         "groq_llm",
         "mistral_llm",
+        "ollama_native_llm",
     ] = Field(..., alias="llm_provider")
 
-    faster_first_response: Optional[bool] = Field(True, alias="faster_first_response")
-    segment_method: Literal["regex", "pysbd"] = Field("pysbd", alias="segment_method")
-    use_mcpp: Optional[bool] = Field(False, alias="use_mcpp")
-    mcp_enabled_servers: Optional[List[str]] = Field([], alias="mcp_enabled_servers")
+    faster_first_response: Optional[bool] = Field(
+        True, alias="faster_first_response"
+    )
+    segment_method: Literal["regex", "pysbd"] = Field(
+        "pysbd", alias="segment_method"
+    )
+    use_mcpp: Optional[bool] = Field(
+        False, alias="use_mcpp"
+    )
+    mcp_enabled_servers: Optional[List[str]] = Field(
+        [], alias="mcp_enabled_servers"
+    )
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "llm_provider": Description(
@@ -66,10 +75,12 @@ class Mem0VectorStoreConfig(I18nMixin, BaseModel):
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "provider": Description(
-            en="Vector store provider (e.g., qdrant)", zh="向量存储提供者（如 qdrant）"
+            en="Vector store provider (e.g., qdrant)",
+            zh="向量存储提供者（如 qdrant）",
         ),
         "config": Description(
-            en="Provider-specific configuration", zh="提供者特定配置"
+            en="Provider-specific configuration",
+            zh="提供者特定配置",
         ),
     }
 
@@ -81,9 +92,12 @@ class Mem0LLMConfig(I18nMixin, BaseModel):
     config: Dict = Field(..., alias="config")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
-        "provider": Description(en="LLM provider name", zh="语言模型提供者名称"),
+        "provider": Description(
+            en="LLM provider name", zh="语言模型提供者名称"
+        ),
         "config": Description(
-            en="Provider-specific configuration", zh="提供者特定配置"
+            en="Provider-specific configuration",
+            zh="提供者特定配置",
         ),
     }
 
@@ -95,9 +109,13 @@ class Mem0EmbedderConfig(I18nMixin, BaseModel):
     config: Dict = Field(..., alias="config")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
-        "provider": Description(en="Embedder provider name", zh="嵌入模型提供者名称"),
+        "provider": Description(
+            en="Embedder provider name",
+            zh="嵌入模型提供者名称",
+        ),
         "config": Description(
-            en="Provider-specific configuration", zh="提供者特定配置"
+            en="Provider-specific configuration",
+            zh="提供者特定配置",
         ),
     }
 
@@ -105,14 +123,25 @@ class Mem0EmbedderConfig(I18nMixin, BaseModel):
 class Mem0Config(I18nMixin, BaseModel):
     """Configuration for Mem0."""
 
-    vector_store: Mem0VectorStoreConfig = Field(..., alias="vector_store")
+    vector_store: Mem0VectorStoreConfig = Field(
+        ..., alias="vector_store"
+    )
     llm: Mem0LLMConfig = Field(..., alias="llm")
-    embedder: Mem0EmbedderConfig = Field(..., alias="embedder")
+    embedder: Mem0EmbedderConfig = Field(
+        ..., alias="embedder"
+    )
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
-        "vector_store": Description(en="Vector store configuration", zh="向量存储配置"),
-        "llm": Description(en="LLM configuration", zh="语言模型配置"),
-        "embedder": Description(en="Embedder configuration", zh="嵌入模型配置"),
+        "vector_store": Description(
+            en="Vector store configuration",
+            zh="向量存储配置",
+        ),
+        "llm": Description(
+            en="LLM configuration", zh="语言模型配置"
+        ),
+        "embedder": Description(
+            en="Embedder configuration", zh="嵌入模型配置"
+        ),
     }
 
 
@@ -124,19 +153,23 @@ class HumeAIConfig(I18nMixin, BaseModel):
 
     api_key: str = Field(..., alias="api_key")
     host: str = Field("api.hume.ai", alias="host")
-    config_id: Optional[str] = Field(None, alias="config_id")
+    config_id: Optional[str] = Field(
+        None, alias="config_id"
+    )
     idle_timeout: int = Field(15, alias="idle_timeout")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "api_key": Description(
-            en="API key for Hume AI service", zh="Hume AI 服务的 API 密钥"
+            en="API key for Hume AI service",
+            zh="Hume AI 服务的 API 密钥",
         ),
         "host": Description(
             en="Host URL for Hume AI service (default: api.hume.ai)",
             zh="Hume AI 服务的主机地址（默认：api.hume.ai）",
         ),
         "config_id": Description(
-            en="Configuration ID for EVI settings", zh="EVI 配置 ID"
+            en="Configuration ID for EVI settings",
+            zh="EVI 配置 ID",
         ),
         "idle_timeout": Description(
             en="Idle timeout in seconds before disconnecting (default: 15)",
@@ -154,12 +187,17 @@ class LettaConfig(I18nMixin, BaseModel):
     host: str = Field("localhost", alias="host")
     port: int = Field(8283, alias="port")
     id: str = Field(..., alias="id")
-    faster_first_response: Optional[bool] = Field(True, alias="faster_first_response")
-    segment_method: Literal["regex", "pysbd"] = Field("pysbd", alias="segment_method")
+    faster_first_response: Optional[bool] = Field(
+        True, alias="faster_first_response"
+    )
+    segment_method: Literal["regex", "pysbd"] = Field(
+        "pysbd", alias="segment_method"
+    )
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "host": Description(
-            en="Host address for the Letta server", zh="Letta服务器的主机地址"
+            en="Host address for the Letta server",
+            zh="Letta服务器的主机地址",
         ),
         "port": Description(
             en="Port number for the Letta server (default: 8283)",
@@ -175,23 +213,35 @@ class LettaConfig(I18nMixin, BaseModel):
 class AgentSettings(I18nMixin, BaseModel):
     """Settings for different types of agents."""
 
-    basic_memory_agent: Optional[BasicMemoryAgentConfig] = Field(
-        None, alias="basic_memory_agent"
+    basic_memory_agent: Optional[BasicMemoryAgentConfig] = (
+        Field(None, alias="basic_memory_agent")
     )
-    mem0_agent: Optional[Mem0Config] = Field(None, alias="mem0_agent")
-    hume_ai_agent: Optional[HumeAIConfig] = Field(None, alias="hume_ai_agent")
-    letta_agent: Optional[LettaConfig] = Field(None, alias="letta_agent")
+    mem0_agent: Optional[Mem0Config] = Field(
+        None, alias="mem0_agent"
+    )
+    hume_ai_agent: Optional[HumeAIConfig] = Field(
+        None, alias="hume_ai_agent"
+    )
+    letta_agent: Optional[LettaConfig] = Field(
+        None, alias="letta_agent"
+    )
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "basic_memory_agent": Description(
-            en="Configuration for basic memory agent", zh="基础记忆代理配置"
+            en="Configuration for basic memory agent",
+            zh="基础记忆代理配置",
         ),
-        "mem0_agent": Description(en="Configuration for Mem0 agent", zh="Mem0代理配置"),
+        "mem0_agent": Description(
+            en="Configuration for Mem0 agent",
+            zh="Mem0代理配置",
+        ),
         "hume_ai_agent": Description(
-            en="Configuration for Hume AI agent", zh="Hume AI 代理配置"
+            en="Configuration for Hume AI agent",
+            zh="Hume AI 代理配置",
         ),
         "letta_agent": Description(
-            en="Configuration for Letta agent", zh="Letta 代理配置"
+            en="Configuration for Letta agent",
+            zh="Letta 代理配置",
         ),
     }
 
@@ -200,20 +250,30 @@ class AgentConfig(I18nMixin, BaseModel):
     """This class contains all of the configurations related to agent."""
 
     conversation_agent_choice: Literal[
-        "basic_memory_agent", "mem0_agent", "hume_ai_agent", "letta_agent"
+        "basic_memory_agent",
+        "mem0_agent",
+        "hume_ai_agent",
+        "letta_agent",
     ] = Field(..., alias="conversation_agent_choice")
-    agent_settings: AgentSettings = Field(..., alias="agent_settings")
-    llm_configs: StatelessLLMConfigs = Field(..., alias="llm_configs")
+    agent_settings: AgentSettings = Field(
+        ..., alias="agent_settings"
+    )
+    llm_configs: StatelessLLMConfigs = Field(
+        ..., alias="llm_configs"
+    )
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "conversation_agent_choice": Description(
-            en="Type of conversation agent to use", zh="要使用的对话代理类型"
+            en="Type of conversation agent to use",
+            zh="要使用的对话代理类型",
         ),
         "agent_settings": Description(
-            en="Settings for different agent types", zh="不同代理类型的设置"
+            en="Settings for different agent types",
+            zh="不同代理类型的设置",
         ),
         "llm_configs": Description(
-            en="Pool of LLM provider configurations", zh="语言模型提供者配置池"
+            en="Pool of LLM provider configurations",
+            zh="语言模型提供者配置池",
         ),
         "faster_first_response": Description(
             en="Whether to respond as soon as encountering a comma in the first sentence to reduce latency (default: True)",

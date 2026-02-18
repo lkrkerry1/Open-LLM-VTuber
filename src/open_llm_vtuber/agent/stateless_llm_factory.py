@@ -2,18 +2,25 @@ from typing import Type
 
 from loguru import logger
 
-from .stateless_llm.stateless_llm_interface import StatelessLLMInterface
+from .stateless_llm.stateless_llm_interface import (
+    StatelessLLMInterface,
+)
 from .stateless_llm.stateless_llm_with_template import (
     AsyncLLMWithTemplate as StatelessLLMWithTemplate,
 )
-from .stateless_llm.openai_compatible_llm import AsyncLLM as OpenAICompatibleLLM
+from .stateless_llm.openai_compatible_llm import (
+    AsyncLLM as OpenAICompatibleLLM,
+)
 from .stateless_llm.ollama_llm import OllamaLLM
 from .stateless_llm.claude_llm import AsyncLLM as ClaudeLLM
+from .stateless_llm.ollama_native_llm import OllamaNativeLLM
 
 
 class LLMFactory:
     @staticmethod
-    def create_llm(llm_provider, **kwargs) -> Type[StatelessLLMInterface]:
+    def create_llm(
+        llm_provider, **kwargs
+    ) -> Type[StatelessLLMInterface]:
         """Create an LLM based on the configuration.
 
         Args:
@@ -21,7 +28,12 @@ class LLMFactory:
             **kwargs: Additional arguments
         """
         logger.info(f"Initializing LLM: {llm_provider}")
-
+        if kwargs is None:
+            kwargs = {}
+        # 添加调试日志，查看传入的参数
+        logger.debug(
+            f"create_llm called with llm_provider={llm_provider}, kwargs={kwargs}"
+        )
         if (
             llm_provider == "openai_compatible_llm"
             or llm_provider == "openai_llm"
@@ -36,7 +48,9 @@ class LLMFactory:
                 model=kwargs.get("model"),
                 base_url=kwargs.get("base_url"),
                 llm_api_key=kwargs.get("llm_api_key"),
-                organization_id=kwargs.get("organization_id"),
+                organization_id=kwargs.get(
+                    "organization_id"
+                ),
                 project_id=kwargs.get("project_id"),
                 temperature=kwargs.get("temperature"),
             )
@@ -45,7 +59,9 @@ class LLMFactory:
                 model=kwargs.get("model"),
                 base_url=kwargs.get("base_url"),
                 llm_api_key=kwargs.get("llm_api_key"),
-                organization_id=kwargs.get("organization_id"),
+                organization_id=kwargs.get(
+                    "organization_id"
+                ),
                 template=kwargs.get("template"),
                 project_id=kwargs.get("project_id"),
             )
@@ -54,15 +70,20 @@ class LLMFactory:
                 model=kwargs.get("model"),
                 base_url=kwargs.get("base_url"),
                 llm_api_key=kwargs.get("llm_api_key"),
-                organization_id=kwargs.get("organization_id"),
+                organization_id=kwargs.get(
+                    "organization_id"
+                ),
                 project_id=kwargs.get("project_id"),
                 temperature=kwargs.get("temperature"),
                 keep_alive=kwargs.get("keep_alive"),
                 unload_at_exit=kwargs.get("unload_at_exit"),
             )
-
+        elif llm_provider == "ollama_native_llm":
+            return OllamaNativeLLM(**kwargs)
         elif llm_provider == "llama_cpp_llm":
-            from .stateless_llm.llama_cpp_llm import LLM as LlamaLLM
+            from .stateless_llm.llama_cpp_llm import (
+                LLM as LlamaLLM,
+            )
 
             return LlamaLLM(
                 model_path=kwargs.get("model_path"),
@@ -75,7 +96,9 @@ class LLMFactory:
                 llm_api_key=kwargs.get("llm_api_key"),
             )
         else:
-            raise ValueError(f"Unsupported LLM provider: {llm_provider}")
+            raise ValueError(
+                f"Unsupported LLM provider: {llm_provider}"
+            )
 
 
 # Creating an LLM instance using a factory

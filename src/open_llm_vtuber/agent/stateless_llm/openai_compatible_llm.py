@@ -14,7 +14,9 @@ from openai import (
     NOT_GIVEN,
 )
 from openai.types.chat import ChatCompletionChunk
-from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
+from openai.types.chat.chat_completion_chunk import (
+    ChoiceDeltaToolCall,
+)
 from loguru import logger
 
 from .stateless_llm_interface import StatelessLLMInterface
@@ -42,7 +44,7 @@ class AsyncLLM(StatelessLLMInterface):
         - llm_api_key (str, optional): The API key for the OpenAI API. Defaults to "z".
         - temperature (float, optional): What sampling temperature to use, between 0 and 2. Defaults to 1.0.
         """
-        self.base_url = base_url
+        self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.client = AsyncOpenAI(
@@ -51,7 +53,7 @@ class AsyncLLM(StatelessLLMInterface):
             project=project_id,
             api_key=llm_api_key,
         )
-        self.support_tools = True
+        self.support_tools = False  # [todo] 目前通过尝试调用来判断模型是否支持工具调用，后续可以改为更优雅的方式
 
         logger.info(
             f"Initialized AsyncLLM with the parameters: {self.base_url}, {self.model}"
@@ -63,48 +65,63 @@ class AsyncLLM(StatelessLLMInterface):
         system: str = None,
         tools: List[Dict[str, Any]] | NotGiven = NOT_GIVEN,
     ) -> AsyncIterator[str | List[ChoiceDeltaToolCall]]:
-        """
-        Generates a chat completion using the OpenAI API asynchronously.
-
-        Parameters:
-        - messages (List[Dict[str, Any]]): The list of messages to send to the API.
-        - system (str, optional): System prompt to use for this completion.
-        - tools (List[Dict[str, str]], optional): List of tools to use for this completion.
-
-        Yields:
-        - str: The content of each chunk from the API response.
-        - List[ChoiceDeltaToolCall]: The tool calls detected in the response.
-
-        Raises:
-        - APIConnectionError: When the server cannot be reached
-        - RateLimitError: When a 429 status code is received
-        - APIError: For other API-related errors
-        """
         stream = None
-        # Tool call related state variables
         accumulated_tool_calls = {}
         in_tool_call = False
 
         try:
-            # If system prompt is provided, add it to the messages
+            # 如果提供了系统提示，添加到消息列表
             messages_with_system = messages
             if system:
                 messages_with_system = [
                     {"role": "system", "content": system},
                     *messages,
                 ]
-            logger.debug(f"Messages: {messages_with_system}")
 
-            available_tools = tools if self.support_tools else NOT_GIVEN
+            # ===== 新增预处理：将 content 数组转换为纯文本 =====
+            processed_messages = []
+            for msg in messages_with_system:
+                content = msg.get("content")
+                if isinstance(content, list):
+                    # 提取所有文本片段并拼接
+                    texts = []
+                    for part in content:
+                        if (
+                            isinstance(part, dict)
+                            and part.get("type") == "text"
+                        ):
+                            texts.append(
+                                part.get("text", "")
+                            )
+                    msg["content"] = " ".join(
+                        texts
+                    )  # 直接修改原字典
+                processed_messages.append(msg)
+            messages_with_system = processed_messages
+            # ===== 预处理结束 =====
 
-            stream: AsyncStream[
-                ChatCompletionChunk
-            ] = await self.client.chat.completions.create(
-                messages=messages_with_system,
-                model=self.model,
-                stream=True,
-                temperature=self.temperature,
-                tools=available_tools,
+            logger.debug(
+                f"Messages: {messages_with_system}"
+            )
+
+            available_tools = (
+                tools if self.support_tools else NOT_GIVEN
+            )
+            logger.debug(
+                f"Request parameters: model={self.model}, messages={messages_with_system}, temperature={self.temperature}, tools={available_tools}, stream=True"
+            )
+            logger.debug(
+                f"Base URL: {self.client.base_url}"
+            )
+
+            stream: AsyncStream[ChatCompletionChunk] = (
+                await self.client.chat.completions.create(
+                    messages=messages_with_system,
+                    model=self.model,
+                    stream=True,
+                    temperature=self.temperature,
+                    tools=available_tools,
+                )
             )
             logger.debug(
                 f"Tool Support: {self.support_tools}, Available tools: {available_tools}"
@@ -117,8 +134,13 @@ class AsyncLLM(StatelessLLMInterface):
 
                 if self.support_tools:
                     has_tool_calls = (
-                        hasattr(chunk.choices[0].delta, "tool_calls")
-                        and chunk.choices[0].delta.tool_calls
+                        hasattr(
+                            chunk.choices[0].delta,
+                            "tool_calls",
+                        )
+                        and chunk.choices[
+                            0
+                        ].delta.tool_calls
                     )
 
                     if has_tool_calls:
@@ -127,59 +149,115 @@ class AsyncLLM(StatelessLLMInterface):
                         )
                         in_tool_call = True
                         # Process tool calls in the current chunk
-                        for tool_call in chunk.choices[0].delta.tool_calls:
+                        for tool_call in chunk.choices[
+                            0
+                        ].delta.tool_calls:
                             index = (
-                                tool_call.index if hasattr(tool_call, "index") else 0
+                                tool_call.index
+                                if hasattr(
+                                    tool_call, "index"
+                                )
+                                else 0
                             )
 
                             # Initialize tool call for this index if needed
-                            if index not in accumulated_tool_calls:
-                                accumulated_tool_calls[index] = {
+                            if (
+                                index
+                                not in accumulated_tool_calls
+                            ):
+                                accumulated_tool_calls[
+                                    index
+                                ] = {
                                     "index": index,
-                                    "id": getattr(tool_call, "id", None),
-                                    "type": getattr(tool_call, "type", None),
-                                    "function": {"name": "", "arguments": ""},
+                                    "id": getattr(
+                                        tool_call,
+                                        "id",
+                                        None,
+                                    ),
+                                    "type": getattr(
+                                        tool_call,
+                                        "type",
+                                        None,
+                                    ),
+                                    "function": {
+                                        "name": "",
+                                        "arguments": "",
+                                    },
                                 }
 
                             # Update tool call information
-                            if hasattr(tool_call, "id") and tool_call.id:
-                                accumulated_tool_calls[index]["id"] = tool_call.id
-                            if hasattr(tool_call, "type") and tool_call.type:
-                                accumulated_tool_calls[index]["type"] = tool_call.type
+                            if (
+                                hasattr(tool_call, "id")
+                                and tool_call.id
+                            ):
+                                accumulated_tool_calls[
+                                    index
+                                ]["id"] = tool_call.id
+                            if (
+                                hasattr(tool_call, "type")
+                                and tool_call.type
+                            ):
+                                accumulated_tool_calls[
+                                    index
+                                ]["type"] = tool_call.type
 
                             # Update function information
-                            if hasattr(tool_call, "function"):
+                            if hasattr(
+                                tool_call, "function"
+                            ):
                                 if (
-                                    hasattr(tool_call.function, "name")
+                                    hasattr(
+                                        tool_call.function,
+                                        "name",
+                                    )
                                     and tool_call.function.name
                                 ):
-                                    accumulated_tool_calls[index]["function"][
+                                    accumulated_tool_calls[
+                                        index
+                                    ]["function"][
                                         "name"
-                                    ] = tool_call.function.name
+                                    ] = (
+                                        tool_call.function.name
+                                    )
                                 if (
-                                    hasattr(tool_call.function, "arguments")
+                                    hasattr(
+                                        tool_call.function,
+                                        "arguments",
+                                    )
                                     and tool_call.function.arguments
                                 ):
-                                    accumulated_tool_calls[index]["function"][
+                                    accumulated_tool_calls[
+                                        index
+                                    ]["function"][
                                         "arguments"
-                                    ] += tool_call.function.arguments
+                                    ] += (
+                                        tool_call.function.arguments
+                                    )
 
                         continue
 
                     # If we were in a tool call but now we're not, yield the tool call result
-                    elif in_tool_call and not has_tool_calls:
+                    elif (
+                        in_tool_call and not has_tool_calls
+                    ):
                         in_tool_call = False
                         # Convert accumulated tool calls to the required format and output
-                        logger.info(f"Complete tool calls: {accumulated_tool_calls}")
+                        logger.info(
+                            f"Complete tool calls: {accumulated_tool_calls}"
+                        )
 
                         # Use the from_dict method to create a ToolCallObject instance from a dictionary
                         complete_tool_calls = [
-                            ToolCallObject.from_dict(tool_data)
+                            ToolCallObject.from_dict(
+                                tool_data
+                            )
                             for tool_data in accumulated_tool_calls.values()
                         ]
 
                         yield complete_tool_calls
-                        accumulated_tool_calls = {}  # Reset for potential future tool calls
+                        accumulated_tool_calls = (
+                            {}
+                        )  # Reset for potential future tool calls
 
                 # Process regular content chunks
                 if len(chunk.choices) == 0:
@@ -191,7 +269,9 @@ class AsyncLLM(StatelessLLMInterface):
 
             # If stream ends while still in a tool call, make sure to yield the tool call
             if in_tool_call and accumulated_tool_calls:
-                logger.info(f"Final tool call at stream end: {accumulated_tool_calls}")
+                logger.info(
+                    f"Final tool call at stream end: {accumulated_tool_calls}"
+                )
 
                 # Create a ToolCallObject instance from a dictionary using the from_dict method.
                 complete_tool_calls = [
@@ -222,6 +302,13 @@ class AsyncLLM(StatelessLLMInterface):
                 yield "__API_NOT_SUPPORT_TOOLS__"
                 return
             logger.error(f"LLM API: Error occurred: {e}")
+            if hasattr(e, "response"):
+                logger.error(
+                    f"Response status: {e.response.status_code}"
+                )
+                logger.error(
+                    f"Response body: {e.response.text}"
+                )
             logger.info(f"Base URL: {self.base_url}")
             logger.info(f"Model: {self.model}")
             logger.info(f"Messages: {messages}")
